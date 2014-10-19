@@ -22,7 +22,7 @@
 .PHONY: all build binary debug clean
 
 CC ?= gcc
-BINARY = tabopen
+BINARY = pulltab
 
 BUILD_DIR = bin
 INCLUDE_DIR = include
@@ -30,7 +30,7 @@ SRC_DIR = src
 SRC = $(wildcard $(SRC_DIR)/*.c)
 
 WARNINGS = -Wall -Wextra# -pedantic
-CFLAGS = -ansi
+CFLAGS = -ansi -I$(INCLUDE_DIR)/
 
 all: clean binary
 
