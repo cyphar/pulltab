@@ -11,6 +11,7 @@ Options:
    -a <auth-file>  -- use HTTP Basic authentication, with the credentials in the given file (of the form 'user\x00pass').
    -x proxy[:port] -- tunnel through the given HTTP proxy (default port is 8080).
    -d dest[:port]  -- tunnel through to the given destination address (default port is 22).
+   -h              -- print this help page and exit.
 ```
 
 A common method of using `-a` is to just use process substitution:

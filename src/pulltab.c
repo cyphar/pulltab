@@ -121,6 +121,7 @@ static void usage() {
 	printf("   -a <auth-file>  -- use HTTP Basic authentication, with the credentials in the given file (of the form 'user\\x00pass').\n");
 	printf("   -x proxy[:port] -- tunnel through the given HTTP proxy (default port is %d).\n", DEFAULT_PROXY_PORT);
 	printf("   -d dest[:port]  -- tunnel through to the given destination address (default port is %d).\n", DEFAULT_DEST_PORT);
+	printf("   -h              -- print this help page and exit.\n");
 }
 
 static int sock_connect(char *hostname, int port) {
