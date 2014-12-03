@@ -22,6 +22,7 @@
 .PHONY: all build binary debug clean
 
 CC ?= gcc
+STRIP ?= strip
 BINARY = pulltab
 
 BUILD_DIR = bin
@@ -42,6 +43,7 @@ build: clean
 
 binary: build
 	$(CC) $(SRC) $(CFLAGS) $(LFLAGS) -o $(BUILD_DIR)/$(BINARY) $(WARNINGS)
+	$(STRIP) $(BUILD_DIR)/$(BINARY)
 
 debug: build
 	$(CC) $(SRC) $(CFLAGS) -DDEBUG $(LFLAGS) -O0 -ggdb -o $(BUILD_DIR)/$(BINARY) $(WARNINGS)
