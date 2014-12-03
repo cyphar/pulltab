@@ -114,6 +114,8 @@ int sock_connect(char *hostname, int port) {
 	if(fd < 0)
 		return -1;
 
+	fprintf(stderr, "connecting to '%s'\n", hostname);
+
 	/* try to resolve -- otherwise use as an ip address */
 	struct hostent *hostent = gethostbyname(hostname);
 	if(hostent)
@@ -144,8 +146,9 @@ char *generate_proxy_request(struct tab_opt *opt) {
 
 	/* append CONNECT to request */
 	request_str = realloc(request_str, request_len + conn_len + 1);
-	strncat(request_str, conn_str, conn_len);
+	strncpy(request_str, conn_str, conn_len);
 	request_len += conn_len;
+	request_str[request_len] = '\0';
 
 	/* set up Proxy-Authorization if needed */
 	switch(opt->proxy_auth) {
@@ -241,16 +244,17 @@ void proxy_setup(struct tab_opt *opt, int sock_fd) {
 	}
 
 	/* read the response from the proxy */
-	char buf[BUF_SIZE];
+	char buf[BUF_SIZE] = "";
 	if(read(sock_fd, buf, BUF_SIZE) < 0) {
 		perror("pulltab");
 		goto error;
 	}
 
 
-	int maj = 0, min = 0,
+	char description[BUF_SIZE] = "";
+	int maj = 0,
+		min = 0,
 		code = 0;
-	char description[BUF_SIZE];
 
 	/* parse the response. it should be of the form "HTTP/[x.y] [code] [description]". */
 	if(sscanf(buf, "HTTP/%d.%d %d %[^\n]", &maj, &min, &code, description) < 4) {
@@ -328,10 +332,12 @@ void bake_args(struct tab_opt *opt, int argc, char **argv) {
 					/* copy over username */
 					opt->auth_username = malloc(auth_ulen + 1);
 					strncpy(opt->auth_username, auth_str, auth_ulen);
+					opt->auth_username[auth_ulen] = '\0';
 
 					/* copy over username */
 					opt->auth_password = malloc(auth_plen + 1);
 					strncpy(opt->auth_password, auth_str + (auth_ulen + 1), auth_plen);
+					opt->auth_password[auth_plen] = '\0';
 
 					/* clean up */
 					free(auth_str);
@@ -345,6 +351,7 @@ void bake_args(struct tab_opt *opt, int argc, char **argv) {
 					/* copy proxy spec */
 					char *proxy_string = malloc(proxy_len + 1);
 					strncpy(proxy_string, optarg, proxy_len);
+					proxy_string[proxy_len] = '\0';
 
 					/* look for host:port separator */
 					int proxy_hlen = proxy_len;
@@ -358,9 +365,17 @@ void bake_args(struct tab_opt *opt, int argc, char **argv) {
 						opt->proxy_port = DEFAULT_PROXY_PORT;
 					}
 
+					/* make sure port number is valid */
+					if(opt->proxy_port < PORT_LOWER_LIM || opt->proxy_port > PORT_UPPER_LIM) {
+						fprintf(stderr, "pulltab: invalid proxy specification: proxy port is not in valid range\n");
+						free(proxy_string);
+						goto error;
+					}
+
 					/* copy hostname over */
 					opt->proxy_hostname = malloc(proxy_hlen + 1);
 					strncpy(opt->proxy_hostname, proxy_string, proxy_hlen);
+					opt->proxy_hostname[proxy_hlen] = '\0';
 
 					/* clean up */
 					free(proxy_string);
@@ -373,6 +388,7 @@ void bake_args(struct tab_opt *opt, int argc, char **argv) {
 					/* copy dest spec */
 					char *dest_string = malloc(dest_len + 1);
 					strncpy(dest_string, optarg, dest_len);
+					dest_string[dest_len] = '\0';
 
 					/* look for host:port separator */
 					int dest_hlen = dest_len;
@@ -396,6 +412,7 @@ void bake_args(struct tab_opt *opt, int argc, char **argv) {
 					/* copy hostname over */
 					opt->dest_hostname = malloc(dest_hlen + 1);
 					strncpy(opt->dest_hostname, dest_string, dest_hlen);
+					opt->dest_hostname[dest_hlen] = '\0';
 
 					/* clean up */
 					free(dest_string);
@@ -421,18 +438,6 @@ void bake_args(struct tab_opt *opt, int argc, char **argv) {
 	/* make sure a dest hostname has been given */
 	if(!opt->dest_hostname) {
 		fprintf(stderr, "pulltab: missing dest specification\n");
-		goto error;
-	}
-
-	/* make sure proxy port number is valid */
-	if(opt->proxy_port < PORT_LOWER_LIM || opt->proxy_port > PORT_UPPER_LIM) {
-		fprintf(stderr, "pulltab: invalid proxy specification: proxy port is not in valid range\n");
-		goto error;
-	}
-
-	/* make sure dest port number is valid */
-	if(opt->dest_port < PORT_LOWER_LIM || opt->dest_port > PORT_UPPER_LIM) {
-		fprintf(stderr, "pulltab: invalid dest specification: dest port is not in valid range\n");
 		goto error;
 	}
 
@@ -509,13 +514,18 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	/* free all references */
-	close(sock_fd);
+	/* clean up */
+	if(sock_fd >= 0)
+		close(sock_fd);
+
 	tab_opt_free(&opt);
 	return 0;
 
 error:
-	close(sock_fd);
+	/* clean up */
+	if(sock_fd >= 0)
+		close(sock_fd);
+
 	tab_opt_free(&opt);
 	exit(1);
 }
