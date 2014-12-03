@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -57,6 +58,22 @@
 
 #define LENPRINTF(...) (snprintf(NULL, 0, __VA_ARGS__))
 
+#if defined(DEBUG)
+static void _debug(char *fmt, ...) {
+
+	va_list ap;
+	va_start(ap, fmt);
+
+	fprintf(stderr, "[D:pulltab] ");
+	vfprintf(stderr, fmt, ap);
+	fflush(stderr);
+
+	va_end(ap);
+}
+#else
+#	define _debug(...)
+#endif
+
 enum {
 	AUTH_NONE,
 	AUTH_BASIC,
@@ -77,7 +94,7 @@ struct tab_opt {
 	int dest_port;
 };
 
-void tab_opt_init(struct tab_opt *opt) {
+static void tab_opt_init(struct tab_opt *opt) {
 	opt->proxy_hostname = NULL;
 	opt->proxy_port = DEFAULT_PROXY_PORT;
 	opt->proxy_auth = AUTH_NONE;
@@ -87,14 +104,14 @@ void tab_opt_init(struct tab_opt *opt) {
 	opt->dest_port = DEFAULT_DEST_PORT;
 }
 
-void tab_opt_free(struct tab_opt *opt) {
+static void tab_opt_free(struct tab_opt *opt) {
 	free(opt->proxy_hostname);
 	free(opt->auth_username);
 	free(opt->auth_password);
 	free(opt->dest_hostname);
 }
 
-void usage() {
+static void usage() {
 	extern char *__progname;
 
 	printf("%s [-a <auth-file>] -x proxy[:port] -d dest[:port] [-h]\n", __progname);
@@ -106,7 +123,7 @@ void usage() {
 	printf("   -d dest[:port]  -- tunnel through to the given destination address (default port is %d).\n", DEFAULT_DEST_PORT);
 }
 
-int sock_connect(char *hostname, int port) {
+static int sock_connect(char *hostname, int port) {
 	struct sockaddr_in addr;
 
 	/* create stream socket */
@@ -114,14 +131,14 @@ int sock_connect(char *hostname, int port) {
 	if(fd < 0)
 		return -1;
 
-	fprintf(stderr, "connecting to '%s'\n", hostname);
-
 	/* try to resolve -- otherwise use as an ip address */
 	struct hostent *hostent = gethostbyname(hostname);
 	if(hostent)
 		memcpy(&addr.sin_addr, hostent->h_addr, hostent->h_length);
 	else
 		addr.sin_addr.s_addr = inet_addr(hostname);
+
+	_debug("resolving proxy '%s'\n", hostname);
 
 	/* fill in other addr data */
 	addr.sin_family = AF_INET;
@@ -131,10 +148,11 @@ int sock_connect(char *hostname, int port) {
 	if(connect(fd, (struct sockaddr *) &addr, sizeof(addr)))
 		return -1;
 
+	_debug("connected to proxy\n");
 	return fd;
 }
 
-char *generate_proxy_request(struct tab_opt *opt) {
+static char *generate_proxy_request(struct tab_opt *opt) {
 	char *request_str = NULL;
 	int request_len = 0;
 
@@ -171,6 +189,8 @@ char *generate_proxy_request(struct tab_opt *opt) {
 				off += base64_encode_blockend(auth_digest + off, &enc_state);
 				auth_digest[off] = '\0';
 
+				_debug("generated HTTP basic authentication digest '%s'\n", auth_digest);
+
 				/* set up auth */
 				int auth_len = LENPRINTF(PROXY_BASIC_AUTH_FORMAT, auth_digest);
 				char *auth_str = malloc(auth_len + 1);
@@ -199,10 +219,11 @@ char *generate_proxy_request(struct tab_opt *opt) {
 	free(conn_str);
 
 	/* request generated */
+	_debug("generated proxy request\n");
 	return request_str;
 }
 
-void proxy_setup(struct tab_opt *opt, int sock_fd) {
+static void proxy_setup(struct tab_opt *opt, int sock_fd) {
 	struct timeval tv;
 	fd_set rfds, wfds;
 
@@ -229,6 +250,8 @@ void proxy_setup(struct tab_opt *opt, int sock_fd) {
 	}
 	free(request);
 
+	_debug("sent request to proxy\n");
+
 	/* set timeout */
 	tv.tv_sec = 5;
 	tv.tv_usec = 0;
@@ -250,6 +273,7 @@ void proxy_setup(struct tab_opt *opt, int sock_fd) {
 		goto error;
 	}
 
+	_debug("received response from proxy\n");
 
 	char description[BUF_SIZE] = "";
 	int maj = 0,
@@ -262,6 +286,8 @@ void proxy_setup(struct tab_opt *opt, int sock_fd) {
 		goto error;
 	}
 
+	_debug("parsed proxy response: %d (%s)\n", code, description);
+
 	/* deal with error codes */
 	if(code < 200 || code >= 300) {
 		fprintf(stderr, "pulltab: error negotiating with proxy: %s\n", description);
@@ -273,7 +299,6 @@ void proxy_setup(struct tab_opt *opt, int sock_fd) {
 		fprintf(stderr, "pulltab: invalid HTTP protocol version returned by proxy: %d.%d\n", maj, min);
 		goto error;
 	}
-
 	return;
 
 error:
@@ -281,7 +306,7 @@ error:
 	exit(1);
 }
 
-void bake_args(struct tab_opt *opt, int argc, char **argv) {
+static void bake_args(struct tab_opt *opt, int argc, char **argv) {
 	int ch;
 	while((ch = getopt(argc, argv, "a:x:d:h")) != -1) {
 		switch(ch) {
@@ -338,6 +363,9 @@ void bake_args(struct tab_opt *opt, int argc, char **argv) {
 					opt->auth_password = malloc(auth_plen + 1);
 					strncpy(opt->auth_password, auth_str + (auth_ulen + 1), auth_plen);
 					opt->auth_password[auth_plen] = '\0';
+
+					_debug("got HTTP basic authentication username '%s'\n", opt->auth_username);
+					_debug("got HTTP basic authentication password '%s'\n", opt->auth_password);
 
 					/* clean up */
 					free(auth_str);
@@ -477,6 +505,7 @@ int main(int argc, char **argv) {
 	size_t len;
 
 	/* main relay loop */
+	_debug("starting main relay loop\n");
 	while(1) {
 		/* set timeout */
 		tv.tv_sec = 5;
@@ -513,6 +542,8 @@ int main(int argc, char **argv) {
 				break;
 		}
 	}
+
+	_debug("connection closed\n");
 
 	/* clean up */
 	if(sock_fd >= 0)

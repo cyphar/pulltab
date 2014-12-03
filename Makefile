@@ -44,4 +44,4 @@ binary: build
 	$(CC) $(SRC) $(CFLAGS) $(LFLAGS) -o $(BUILD_DIR)/$(BINARY) $(WARNINGS)
 
 debug: build
-	$(CC) $(SRC) $(CFLAGS) $(LFLAGS) -O0 -ggdb -o $(BUILD_DIR)/$(BINARY)-dbg $(WARNINGS)
+	$(CC) $(SRC) $(CFLAGS) -DDEBUG $(LFLAGS) -O0 -ggdb -o $(BUILD_DIR)/$(BINARY) $(WARNINGS)
